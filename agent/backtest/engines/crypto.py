@@ -26,7 +26,7 @@ class CryptoEngine(BaseEngine):
       - leverage: default 1.0
       - maker_rate: default 0.0002
       - taker_rate: default 0.0005
-      - slippage: default 0.0005
+      - slippage: default 0.0015
       - margin_mode: "isolated" (default) or "cross"
       - funding_rate: fixed rate per settlement, default 0.0001
     """
@@ -35,7 +35,7 @@ class CryptoEngine(BaseEngine):
         super().__init__(config)
         self.maker_rate: float = config.get("maker_rate", 0.0002)
         self.taker_rate: float = config.get("taker_rate", 0.0005)
-        self.slippage_rate: float = config.get("slippage", 0.0005)
+        self.slippage_rate: float = config.get("slippage", 0.0015)
         self.funding_rate: float = config.get("funding_rate", 0.0001)
         self._funding_applied: set = set()   # (symbol, date, hour) — per-slot dedup
         self._funding_daily_done: set = set()  # (symbol, date) — daily fallback dedup

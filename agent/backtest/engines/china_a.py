@@ -25,7 +25,7 @@ class ChinaAEngine(BaseEngine):
       - commission_min: default 5.0 (RMB)
       - stamp_tax: default 0.0005 (万5, sell-only)
       - transfer_fee: default 0.00001 (万0.1)
-      - slippage: default 0.001
+      - slippage: default 0.0025
     """
 
     def __init__(self, config: dict):
@@ -35,7 +35,7 @@ class ChinaAEngine(BaseEngine):
         self.commission_min: float = config.get("commission_min", 5.0)
         self.stamp_tax: float = config.get("stamp_tax", 0.0005)
         self.transfer_fee: float = config.get("transfer_fee", 0.00001)
-        self.slippage_rate: float = config.get("slippage", 0.001)
+        self.slippage_rate: float = config.get("slippage", 0.0025)
 
     def can_execute(self, symbol: str, direction: int, bar: pd.Series) -> bool:
         """A-share execution rules.

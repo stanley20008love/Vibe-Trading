@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_MARKETS: tuple[str, ...] = ("china_a", "hk", "us", "crypto")
 
+SURVIVORSHIP_BIAS_DISCOUNT: float = 0.04  # 4% annual deduction
+
 _LIQUID_BASKETS: dict[str, list[str]] = {
     "china_a": ["600519.SH", "000858.SZ", "300750.SZ", "600036.SH", "000001.SZ"],
     "hk":      ["00700.HK", "09988.HK", "03690.HK", "00388.HK", "01810.HK"],
@@ -75,6 +77,12 @@ def select_multi_market_codes(
         basket = _LIQUID_BASKETS.get(market)
         if not basket:
             continue
+        logger.warning(
+            "Survivorship bias: using static liquid basket for market '%s'. "
+            "Backtest results may overstate returns because basket only includes "
+            "currently liquid instruments (survivors). Apply a %.0f%% annual discount.",
+            market, SURVIVORSHIP_BIAS_DISCOUNT * 100,
+        )
         selection[market] = basket[: max(1, per_market_count)]
     return selection
 
@@ -157,15 +165,28 @@ def run_shadow_backtest(
         combined=combined,
     )
 
+    # Apply survivorship bias discount to shadow PnL
+    window_start_ts = pd.Timestamp(window_start)
+    window_end_ts = pd.Timestamp(window_end)
+    years_in_backtest = max((window_end_ts - window_start_ts).days / 365.25, 0.0)
+    bias_discount = 1.0 - SURVIVORSHIP_BIAS_DISCOUNT * years_in_backtest
+    adjusted_shadow_pnl = round(shadow_pnl * bias_discount, 2)
+    survivorship_bias_warning = (
+        f"Shadow PnL discounted by {SURVIVORSHIP_BIAS_DISCOUNT * 100:.1f}%/yr "
+        f"({years_in_backtest:.2f} years → factor {bias_discount:.4f}). "
+        f"Original shadow PnL: {shadow_pnl:.2f}, adjusted: {adjusted_shadow_pnl:.2f}"
+    ) if years_in_backtest > 0 else ""
+
     result = ShadowBacktestResult(
         shadow_id=profile.shadow_id,
         per_market=per_market,
         combined=combined,
         equity_curves=equity_curves,
         attribution=attribution,
-        shadow_total_pnl=shadow_pnl,
+        shadow_total_pnl=adjusted_shadow_pnl,
         real_total_pnl=real_pnl,
-        delta_pnl=round(shadow_pnl - real_pnl, 2),
+        delta_pnl=round(adjusted_shadow_pnl - real_pnl, 2),
+        survivorship_bias_warning=survivorship_bias_warning,
     )
     _cache_result(run_dir, result)
     return result
@@ -200,6 +221,7 @@ def load_cached_result(shadow_id: str) -> ShadowBacktestResult | None:
         shadow_total_pnl=float(data.get("shadow_total_pnl", 0.0)),
         real_total_pnl=float(data.get("real_total_pnl", 0.0)),
         delta_pnl=float(data.get("delta_pnl", 0.0)),
+        survivorship_bias_warning=str(data.get("survivorship_bias_warning", "")),
     )
 
 

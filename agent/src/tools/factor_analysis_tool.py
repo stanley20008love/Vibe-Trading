@@ -11,6 +11,7 @@ import pandas as pd
 from scipy.stats import spearmanr
 
 from src.agent.tools import BaseTool
+from src.tools.path_utils import safe_run_dir, safe_user_path
 
 
 def _compute_ic_series(factor_df: pd.DataFrame, return_df: pd.DataFrame) -> pd.Series:
@@ -110,6 +111,14 @@ def run_factor_analysis(
     Returns:
         JSON-formatted analysis summary.
     """
+    # --- Path validation: prevent directory traversal / arbitrary file access ---
+    try:
+        factor_csv = str(safe_user_path(factor_csv))
+        return_csv = str(safe_user_path(return_csv))
+        output_dir = str(safe_run_dir(output_dir))
+    except ValueError as exc:
+        return json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False)
+
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 

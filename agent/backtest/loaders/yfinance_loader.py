@@ -85,7 +85,7 @@ def _download_history(
         start=start_date,
         end=end_date,
         interval=interval,
-        auto_adjust=False,
+        auto_adjust=True,
         progress=False,
     )
 

@@ -14,15 +14,16 @@ RUN npm run build
 # ============================================================================
 FROM python:3.11-slim AS runtime
 
-LABEL org.opencontainers.image.title="Vibe-Trading" \
-    org.opencontainers.image.description="Natural-language finance research AI agent with backtesting" \
-    org.opencontainers.image.version="0.1.7" \
-    org.opencontainers.image.source="https://github.com/HKUDS/Vibe-Trading" \
+LABEL org.opencontainers.image.title="Vibe-Trading-Hardened" \
+    org.opencontainers.image.description="Security-hardened & trading-logic-fixed Vibe-Trading fork" \
+    org.opencontainers.image.version="1.0.0-hardened" \
+    org.opencontainers.image.source="https://github.com/stanley20008love/Vibe-Trading" \
     org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
-# System deps
+# System deps — use multi-stage approach: build-essential only for pip compile,
+# then remove in final layer to reduce attack surface.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -54,6 +55,11 @@ EXPOSE 8899
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8899/health')" || exit 1
+
+# Security: Set sensible defaults
+ENV VIBE_TRADING_ENABLE_SHELL_TOOLS=0 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 # Run API server (serves frontend/dist as static files)
 CMD ["vibe-trading", "serve", "--host", "0.0.0.0", "--port", "8899"]

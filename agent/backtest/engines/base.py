@@ -200,6 +200,9 @@ class BaseEngine(ABC):
       - on_bar: per-bar hooks (funding fees, liquidation, etc.)
     """
 
+    _max_position_pct: float = 0.30  # max 30% in single position
+    _max_total_leverage: float = 2.0  # max 2x total leverage
+
     def __init__(self, config: dict):
         self.config = config
         self.initial_capital: float = config.get("initial_cash", 1_000_000)
@@ -452,18 +455,31 @@ class BaseEngine(ABC):
             ))
 
         # d. Force close all remaining positions
+        # NOTE: This is an optimistic close — we assume we can exit at the
+        # close price (with slippage) and pay commission, which is more
+        # realistic than a zero-cost exit but may still understate the true
+        # cost of liquidation in a live market.
         if len(dates) > 0:
             last_ts = dates[-1]
             for c in list(self.positions.keys()):
-                price = self._safe_price(close_df, last_ts, c, self.positions[c].entry_price)
-                self._close_position(c, price, last_ts, "end_of_backtest")
+                pos = self.positions[c]
+                raw_price = self._safe_price(close_df, last_ts, c, pos.entry_price)
+                # Apply slippage to the exit price (unfavourable direction)
+                slipped_price = self.apply_slippage(raw_price, -pos.direction)
+                self._close_position(c, slipped_price, last_ts, "end_of_backtest")
 
     def _calc_equity(self, close_df: pd.DataFrame, ts: pd.Timestamp) -> float:
-        """Total equity = free cash + sum(margin + unrealised) per position."""
+        """Total equity = free cash + sum(margin + unrealised) per position.
+
+        Margin is calculated at mark-to-market (current) price, not entry
+        price, so that equity reflects the true collateral value of each
+        position. The _close_position method still releases entry-based
+        margin to keep capital accounting consistent.
+        """
         equity = self.capital
         for sym, pos in self.positions.items():
             cp = self._safe_price(close_df, ts, sym, pos.entry_price)
-            margin = self._calc_margin(sym, pos.size, pos.entry_price, pos.leverage)
+            margin = self._calc_margin(sym, pos.size, cp, pos.leverage)
             unrealized = self._calc_pnl(sym, pos.direction, pos.size, pos.entry_price, cp)
             equity += margin + unrealized
         return equity
@@ -512,6 +528,26 @@ class BaseEngine(ABC):
             slipped = self.apply_slippage(open_price, target_dir)
             leverage = self.default_leverage
             target_notional = abs(target_weight) * equity * leverage
+
+            # ── Position concentration limits ──
+            # Cap single position to max % of equity
+            max_notional = self._max_position_pct * equity * leverage
+            if target_notional > max_notional:
+                target_notional = max_notional
+
+            # Check total leverage: reject if total margin would exceed 2x equity
+            existing_margin = sum(
+                self._calc_margin(s, p.size, slipped, p.leverage)
+                for s, p in self.positions.items()
+            )
+            new_margin = target_notional / leverage
+            if existing_margin + new_margin > self._max_total_leverage * equity:
+                logger.info(
+                    "Rejecting open %s: total margin %.2f would exceed %.1fx equity",
+                    symbol, existing_margin + new_margin, self._max_total_leverage,
+                )
+                return
+
             raw_size = self._calc_raw_size(symbol, target_notional, slipped)
             size = self.round_size(raw_size, slipped)
             if size <= 0:

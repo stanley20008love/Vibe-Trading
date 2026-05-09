@@ -10,6 +10,7 @@ import asyncio
 import hmac
 import ipaddress
 import json
+import logging
 import os
 import signal
 import time
@@ -47,6 +48,7 @@ _UPLOAD_CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 # Rich console for colored logs
 console = Console()
+logger = logging.getLogger("vibe-trading.api")
 
 
 # ============================================================================
@@ -291,8 +293,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 
@@ -302,6 +304,13 @@ async def _run_startup_preflight() -> None:
     from src.preflight import run_preflight
 
     run_preflight(console)
+
+    if not _configured_api_key():
+        logger.warning("=" * 60)
+        logger.warning("\u26a0\ufe0f  RUNNING IN DEVELOPMENT MODE - NO API AUTH SET")
+        logger.warning("\u26a0\ufe0f  Only loopback clients are accepted")
+        logger.warning("\u26a0\ufe0f  Set API_AUTH_KEY env var for production use")
+        logger.warning("=" * 60)
 
 
 # ============================================================================
@@ -510,6 +519,25 @@ LLM_REASONING_EFFORTS = {"", "low", "medium", "high", "max"}
 LLM_API_KEY_PLACEHOLDERS = {"", "sk-or-v1-your-key-here", "sk-xxx", "xxx", "gsk_xxx"}
 TUSHARE_TOKEN_PLACEHOLDERS = {"", "your-tushare-token"}
 
+_ALLOWED_ENV_KEYS = frozenset({
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_BASE_URL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "GOOGLE_API_KEY",
+    "GOOGLE_BASE_URL",
+    "XAI_API_KEY",
+    "XAI_BASE_URL",
+    "TUSHARE_TOKEN",
+    "KIMI_API_KEY",
+    "KIMI_BASE_URL",
+    "VIBE_TRADING_ENABLE_SHELL_TOOLS",
+})
+
 
 def _ensure_agent_env_file() -> Path:
     """Ensure the project-local agent/.env exists."""
@@ -579,6 +607,13 @@ def _format_env_value(value: str) -> str:
 
 def _write_env_values(path: Path, updates: Dict[str, str]) -> None:
     """Upsert active dotenv values while preserving comments and ordering."""
+    # Filter out keys not on the whitelist
+    disallowed = [k for k in updates if k not in _ALLOWED_ENV_KEYS]
+    if disallowed:
+        logger.warning("Rejected write of non-whitelisted env keys: %s", disallowed)
+        updates = {k: v for k, v in updates.items() if k in _ALLOWED_ENV_KEYS}
+        if not updates:
+            return
     _ensure_agent_env_file()
     lines = path.read_text(encoding="utf-8").splitlines()
     seen: set[str] = set()
@@ -697,6 +732,9 @@ def _build_data_source_settings_response(values: Optional[Dict[str, str]] = None
 def _sync_runtime_env(provider: LLMProviderOption, updates: Dict[str, str]) -> None:
     """Apply saved LLM settings to the running API process."""
     for key, value in updates.items():
+        if key not in _ALLOWED_ENV_KEYS:
+            logger.warning("Skipping sync of non-whitelisted env key: %s", key)
+            continue
         if value:
             os.environ[key] = value
         else:
@@ -755,7 +793,7 @@ def _build_response_from_run_dir(run_dir: Path, elapsed: float, *, include_analy
         status="unknown",
         run_id=run_id,
         elapsed_seconds=elapsed,
-        run_directory=str(run_dir),
+        run_directory=_project_relative_path(run_dir),
     )
 
     state_data = _load_json_file(run_dir / "state.json")
@@ -1174,7 +1212,7 @@ async def health_check():
     )
 
 
-@app.get("/correlation")
+@app.get("/correlation", dependencies=[Depends(require_local_or_auth)])
 async def get_correlation_matrix(
     codes: str = Query(..., description="Comma-separated asset codes, e.g. BTC-USDT,ETH-USDT,SPY"),
     days: int = Query(90, description="Lookback window in days", ge=7, le=365),
@@ -1225,7 +1263,7 @@ async def shutdown_local_api(background_tasks: BackgroundTasks, request: Request
     }
 
 
-@app.get("/skills")
+@app.get("/skills", dependencies=[Depends(require_local_or_auth)])
 async def list_skills():
     """List registered skills (name and description)."""
     from src.agent.skills import SkillsLoader
@@ -1240,7 +1278,7 @@ async def list_skills():
     ]
 
 
-@app.get("/api")
+@app.get("/api", dependencies=[Depends(require_local_or_auth)])
 async def api_info():
     """Service metadata."""
     return {

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.zeabur.app/template.json",
+  "build": {
+    "type": "dockerfile",
+    "dockerfile": "Dockerfile"
+  },
+  "ports": [
+    {
+      "id": "web",
+      "port": 8899,
+      "type": "HTTP"
+    }
+  ],
+  "env": {
+    "API_AUTH_KEY": {
+      "required": true,
+      "expose": true,
+      "description": "API authentication key for production access"
+    },
+    "OPENROUTER_API_KEY": {
+      "required": false,
+      "expose": true,
+      "description": "OpenRouter API key for LLM access"
+    },
+    "OPENAI_API_KEY": {
+      "required": false,
+      "expose": true,
+      "description": "OpenAI API key for LLM access"
+    },
+    "DEEPSEEK_API_KEY": {
+      "required": false,
+      "expose": true,
+      "description": "DeepSeek API key for LLM access"
+    },
+    "VIBE_TRADING_ENABLE_SHELL_TOOLS": {
+      "required": false,
+      "default": "0",
+      "description": "Enable shell tools (0=disabled, 1=enabled) - keep disabled for security"
+    }
+  }
+}

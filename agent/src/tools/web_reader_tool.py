@@ -39,14 +39,21 @@ def _url_allowed(url: str) -> tuple[bool, str]:
     except ValueError:
         return True, ""
 
+    # Check for IPv6-mapped IPv4 addresses (e.g. ::ffff:127.0.0.1).
+    # An attacker can bypass private-IP checks by using the mapped form,
+    # so we unwrap to the underlying IPv4 and check that instead.
+    check_ip = ip
+    if hasattr(ip, "ipv4_mapped") and ip.ipv4_mapped is not None:
+        check_ip = ip.ipv4_mapped
+
     if (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_multicast
-        or ip.is_reserved
-        or ip.is_unspecified
-        or not ip.is_global
+        check_ip.is_private
+        or check_ip.is_loopback
+        or check_ip.is_link_local
+        or check_ip.is_multicast
+        or check_ip.is_reserved
+        or check_ip.is_unspecified
+        or not check_ip.is_global
     ):
         return False, "target URL is not allowed"
     return True, ""

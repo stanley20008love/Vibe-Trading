@@ -101,3 +101,4 @@ class ShadowBacktestResult:
     shadow_total_pnl: float
     real_total_pnl: float
     delta_pnl: float
+    survivorship_bias_warning: str = ""

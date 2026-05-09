@@ -49,7 +49,7 @@ mcp = FastMCP("Vibe-Trading")
 
 _skills_loader = None
 _registry = None
-_include_shell_tools = True
+_include_shell_tools = False
 
 
 def _env_shell_tools_enabled() -> bool:
@@ -708,7 +708,7 @@ def main():
     parser.add_argument("--port", type=int, default=8900,
                         help="SSE port (only used with --transport sse)")
     args = parser.parse_args()
-    _include_shell_tools = True if args.transport == "stdio" else _env_shell_tools_enabled()
+    _include_shell_tools = False if args.transport == "stdio" else _env_shell_tools_enabled()
     _registry = None
     _get_registry()  # pre-warm: avoids deadlock when first tools/call lazy-inits inside FastMCP worker thread
 

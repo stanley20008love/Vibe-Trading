@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import threading
 import uuid
@@ -10,6 +11,38 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.agent.tools import BaseTool
+
+# ---------------------------------------------------------------------------
+# Command denylist — same as bash_tool.py: blocks network exfiltration,
+# reverse shells, and destructive commands.
+# ---------------------------------------------------------------------------
+_COMMAND_DENYLIST: list[re.Pattern[str]] = [
+    re.compile(r"\bcurl\b", re.IGNORECASE),
+    re.compile(r"\bwget\b", re.IGNORECASE),
+    re.compile(r"\bnc\b"),
+    re.compile(r"\bncat\b", re.IGNORECASE),
+    re.compile(r"\bssh\b", re.IGNORECASE),
+    re.compile(r"\bscp\b", re.IGNORECASE),
+    re.compile(r"\brsync\b", re.IGNORECASE),
+    re.compile(r"\bpython\s+-c\b"),
+    re.compile(r"\bpython3\s+-c\b"),
+    re.compile(r"\beval\b"),
+    re.compile(r"\bexec\b"),
+    re.compile(r"\brm\s+-rf\b"),
+    re.compile(r"\bmkfifo\b", re.IGNORECASE),
+    re.compile(r"/dev/tcp"),
+    re.compile(r"\bbase64\s+-d\b"),
+    re.compile(r"\bopenssl\b", re.IGNORECASE),
+    re.compile(r"\|\s*(?:nc|ncat|curl|wget|openssl|socat)\b", re.IGNORECASE),
+]
+
+
+def _is_command_allowed(command: str) -> tuple[bool, str]:
+    """Return (allowed, reason) after checking the command against the denylist."""
+    for pattern in _COMMAND_DENYLIST:
+        if pattern.search(command):
+            return False, f"Command denied: matches denied pattern '{pattern.pattern}'"
+    return True, ""
 
 WORKDIR = Path(__file__).resolve().parents[2]
 
@@ -31,6 +64,10 @@ class BackgroundManager:
         Returns:
             JSON string containing status and task_id.
         """
+        allowed, reason = _is_command_allowed(command)
+        if not allowed:
+            return json.dumps({"status": "error", "error": reason}, ensure_ascii=False)
+
         task_id = uuid.uuid4().hex[:8]
         self.tasks[task_id] = {"status": "running", "result": None, "command": command}
         threading.Thread(target=self._execute, args=(task_id, command), daemon=True).start()

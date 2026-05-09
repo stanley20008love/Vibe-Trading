@@ -42,7 +42,7 @@ class Session:
         config: Session-level configuration such as model overrides or strategy parameters.
     """
 
-    session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    session_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     title: str = ""
     status: SessionStatus = SessionStatus.ACTIVE
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
@@ -90,7 +90,7 @@ class Message:
         metadata: Additional metadata.
     """
 
-    message_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    message_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     session_id: str = ""
     role: str = "user"
     content: str = ""
@@ -138,7 +138,7 @@ class Attempt:
         metrics: Snapshot of backtest metrics.
     """
 
-    attempt_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
+    attempt_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     session_id: str = ""
     parent_attempt_id: Optional[str] = None
     status: AttemptStatus = AttemptStatus.PENDING
